@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/rpc"
 	"time"
@@ -17,10 +18,15 @@ import (
 
 // RequestPayload describes the JSON that this service accepts as an HTTP Post request
 type RequestPayload struct {
-	Action string      `json:"action"`
-	Auth   AuthPayload `json:"auth,omitempty"`
-	Log    LogPayload  `json:"log,omitempty"`
-	Mail   MailPayload `json:"mail,omitempty"`
+	Action string        `json:"action"`
+	Auth   AuthPayload   `json:"auth,omitempty"`
+	Log    LogPayload    `json:"log,omitempty"`
+	Mail   MailPayload   `json:"mail,omitempty"`
+	Random RandomPayload `json:"random,omitempty"`
+}
+
+type RandomPayload struct {
+	Data string `json:"data"`
 }
 
 // MailPayload is the embedded type (in RequestPayload) that describes an email message to be sent
@@ -56,6 +62,7 @@ func (app *Config) Broker(w http.ResponseWriter, r *http.Request) {
 // HandleSubmission is the main point of entry into the broker. It accepts a JSON
 // payload and performs an action based on the value of "action" in that JSON.
 func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
+
 	var requestPayload RequestPayload
 
 	err := app.readJSON(w, r, &requestPayload)
@@ -68,12 +75,51 @@ func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
 	case "auth":
 		app.authenticate(w, requestPayload.Auth)
 	case "log":
-		app.logItemViaRPC(w, requestPayload.Log)
+		// app.logItemViaRPC(w, requestPayload.Log)
+		app.logItem(w, requestPayload.Log)
 	case "mail":
 		app.sendMail(w, requestPayload.Mail)
+	case "random":
+		app.callRandom(w, requestPayload.Random)
 	default:
 		app.errorJSON(w, errors.New("unknown action"))
 	}
+}
+
+func (app *Config) callRandom(w http.ResponseWriter, entry RandomPayload) {
+	jsonData, err := json.MarshalIndent(entry, "", "\t")
+	if err != nil {
+		app.errorJSON(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	randomServiceURL := "http://random-service/random"
+
+	request, err := http.NewRequest("POST", randomServiceURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		app.errorJSON(w, err, http.StatusInternalServerError)
+		return
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	response, err := client.Do(request)
+	if err != nil {
+		app.errorJSON(w, err, http.StatusInternalServerError)
+		return
+	}
+	defer response.Body.Close()
+
+	app.log.PrintLogs(response.Body)
+	if response.StatusCode != http.StatusAccepted {
+		app.errorJSON(w, fmt.Errorf("Response status not Accepted"))
+		return
+	}
+
+	var jsonRes jsonResponse
+	json.NewDecoder(response.Body).Decode(&jsonRes)
+	app.writeJSON(w, http.StatusAccepted, jsonRes)
+
 }
 
 // logItem logs an item by making an HTTP Post request with a JSON payload, to the logger microservice
@@ -296,7 +342,7 @@ func (app *Config) LogViaGRPC(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	_, err = c.WriteLog(ctx, &logs.LogRequest{
-		LogEntry: &logs.Log {
+		LogEntry: &logs.Log{
 			Name: requestPayload.Log.Name,
 			Data: requestPayload.Log.Data,
 		},

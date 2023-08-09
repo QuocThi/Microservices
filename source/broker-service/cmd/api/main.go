@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"math"
@@ -15,6 +16,21 @@ const webPort = "80"
 
 type Config struct {
 	Rabbit *amqp.Connection
+	log    Logs
+}
+
+type Logs struct {
+	log log.Logger
+	buf *bytes.Buffer
+}
+
+func NewLogs() Logs {
+	var buf bytes.Buffer
+	logger := log.New(&buf, "logger: ", log.Lshortfile)
+	return Logs{
+		log: *logger,
+		buf: &buf,
+	}
 }
 
 func main() {
@@ -26,15 +42,18 @@ func main() {
 	}
 	defer rabbitConn.Close()
 
+	l := NewLogs()
+
 	app := Config{
 		Rabbit: rabbitConn,
+		log:    l,
 	}
 
 	log.Printf("Starting broker service on port %s\n", webPort)
 
 	// define http server
 	srv := &http.Server{
-		Addr: fmt.Sprintf(":%s", webPort),
+		Addr:    fmt.Sprintf(":%s", webPort),
 		Handler: app.routes(),
 	}
 
