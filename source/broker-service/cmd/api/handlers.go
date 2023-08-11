@@ -1,8 +1,6 @@
 package main
 
 import (
-	"broker/event"
-	"broker/logs"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,6 +12,9 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"broker/event"
+	"broker/logs"
 )
 
 // RequestPayload describes the JSON that this service accepts as an HTTP Post request
@@ -62,7 +63,6 @@ func (app *Config) Broker(w http.ResponseWriter, r *http.Request) {
 // HandleSubmission is the main point of entry into the broker. It accepts a JSON
 // payload and performs an action based on the value of "action" in that JSON.
 func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
-
 	var requestPayload RequestPayload
 
 	err := app.readJSON(w, r, &requestPayload)
@@ -80,7 +80,8 @@ func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
 	case "mail":
 		app.sendMail(w, requestPayload.Mail)
 	case "random":
-		app.callRandom(w, requestPayload.Random)
+		// app.callRandom(w, requestPayload.Random)
+		app.callRandomRPC(w, requestPayload.Random)
 	default:
 		app.errorJSON(w, errors.New("unknown action"))
 	}
@@ -112,14 +113,13 @@ func (app *Config) callRandom(w http.ResponseWriter, entry RandomPayload) {
 
 	app.log.PrintLogs(response.Body)
 	if response.StatusCode != http.StatusAccepted {
-		app.errorJSON(w, fmt.Errorf("Response status not Accepted"))
+		app.errorJSON(w, fmt.Errorf("response status not accepted"))
 		return
 	}
 
 	var jsonRes jsonResponse
 	json.NewDecoder(response.Body).Decode(&jsonRes)
 	app.writeJSON(w, http.StatusAccepted, jsonRes)
-
 }
 
 // logItem logs an item by making an HTTP Post request with a JSON payload, to the logger microservice
@@ -155,7 +155,6 @@ func (app *Config) logItem(w http.ResponseWriter, entry LogPayload) {
 	payload.Message = "logged"
 
 	app.writeJSON(w, http.StatusAccepted, payload)
-
 }
 
 // authenticate calls the authentication microservice and sends back the appropriate response
@@ -246,7 +245,6 @@ func (app *Config) sendMail(w http.ResponseWriter, msg MailPayload) {
 	payload.Message = "Message sent to " + msg.To
 
 	app.writeJSON(w, http.StatusAccepted, payload)
-
 }
 
 // logEventViaRabbit logs an event using the logger-service. It makes the call by pushing the data to RabbitMQ.
@@ -301,10 +299,7 @@ func (app *Config) logItemViaRPC(w http.ResponseWriter, l LogPayload) {
 		return
 	}
 
-	rpcPayload := RPCPayload{
-		Name: l.Name,
-		Data: l.Data,
-	}
+	rpcPayload := RPCPayload(l)
 
 	var result string
 	err = client.Call("RPCServer.LogInfo", rpcPayload, &result)
@@ -319,6 +314,36 @@ func (app *Config) logItemViaRPC(w http.ResponseWriter, l LogPayload) {
 	}
 
 	app.writeJSON(w, http.StatusAccepted, payload)
+}
+
+type RandomRPCPayload struct {
+	Data string
+}
+
+type RandomRPCResponse struct {
+	Method string
+	Data   string
+}
+
+// send request to random-service via RPC
+func (app *Config) callRandomRPC(w http.ResponseWriter, p RandomPayload) {
+	conn, err := rpc.Dial("tcp", "random-service:5002")
+	if err != nil {
+		app.errorJSON(w, err)
+		return
+	}
+	var rpcResponse RandomRPCResponse
+	err = conn.Call("RPCServer.RandomRPC", RandomRPCPayload(p), &rpcResponse)
+	if err != nil {
+		app.errorJSON(w, err)
+	}
+	res := jsonResponse{
+		Error:   false,
+		Message: "Call Random RPC successed",
+		Data:    rpcResponse,
+	}
+
+	app.writeJSON(w, http.StatusAccepted, res)
 }
 
 func (app *Config) LogViaGRPC(w http.ResponseWriter, r *http.Request) {

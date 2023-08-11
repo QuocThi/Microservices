@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/rpc"
 
 	"random-service/cmd/database"
 )
 
 const (
 	webPort  = "80"
-	rpcPort  = "5001"
+	rpcPort  = "5002"
 	gRPC     = "50001"
 	mongoURL = "mongodb://mongo:27017"
 )
@@ -33,14 +35,14 @@ type Config struct {
 
 type Logs struct {
 	buf *bytes.Buffer
-	log log.Logger
+	log *log.Logger
 }
 
 func NewLogs() Logs {
 	var buf bytes.Buffer
 	logger := log.New(&buf, "logger: ", log.Lshortfile)
 	return Logs{
-		log: *logger,
+		log: logger,
 		buf: &buf,
 	}
 }
@@ -54,10 +56,13 @@ func NewConfig(db *database.DB, name string, log Logs) Config {
 }
 
 func main() {
+	log := NewLogs()
+	log.PrintLogs("connecting to mongodb ...")
 	db, err := database.NewDB("random", mongoURL)
 	if err != nil {
 		panic(err)
 	}
+	log.PrintLogs("connected to mongodb")
 
 	// close db connection
 	defer func() {
@@ -66,8 +71,18 @@ func main() {
 		}
 	}()
 
-	log := NewLogs()
 	app := NewConfig(db, "random-service", log)
+
+	rpcServer := NewRPCServer("randomRPC", *app.db)
+	// register to RPC
+	err = rpc.Register(rpcServer)
+	if err != nil {
+		panic("failed to register RPC for RPCServer reveiver")
+	}
+	log.PrintLogs("register RPC successed")
+
+	go app.listenRPC(rpcPort)
+	log.log.Printf("start RPC server listen on %s \n", rpcPort)
 
 	// Listen normal requests
 	server := http.Server{
@@ -78,5 +93,23 @@ func main() {
 	err = server.ListenAndServe()
 	if err != nil {
 		panic("failed to start random-service")
+	}
+	log.log.Printf("start http server listen on %s \n", webPort)
+}
+
+func (app *Config) listenRPC(port string) {
+	listenURL := fmt.Sprintf("0.0.0.0:%s", rpcPort)
+	listen, err := net.Listen("tcp", listenURL)
+	if err != nil {
+		panic("failed to listen rpc...")
+	}
+
+	for {
+		conn, err := listen.Accept()
+		if err != nil {
+			continue
+		}
+
+		go rpc.ServeConn(conn)
 	}
 }

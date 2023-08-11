@@ -2,6 +2,6 @@ FROM alpine:latest
 
 RUN mkdir /app
 
-COPY randomService /app
+COPY randomApp /app
 
-CMD [ "/app/randomService"]
+CMD [ "/app/randomApp"]

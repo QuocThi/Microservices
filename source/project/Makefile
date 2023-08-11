@@ -4,7 +4,7 @@ AUTH_BINARY=authApp
 LOGGER_BINARY=loggerServiceApp
 MAIL_BINARY=mailerApp
 LISTENER_BINARY=listenerApp
-RANDOM_SRV_BINARY=randomService
+RANDOM_SRV_BINARY=randomApp
 
 ## up: starts all containers in the background without forcing build
 up:
@@ -24,6 +24,8 @@ up_build: build_broker build_auth build_logger build_mail build_listener build_r
 down:
 	@echo "Stopping docker compose..."
 	docker-compose down
+	@echo "Clean up old binaries..."
+	rm ../authentication-service/authApp ../mail-service/mailerApp ../random-service/randomApp ../logger-service/loggerServiceApp ../listener-service/listenerApp ../broker-service/brokerApp
 	@echo "Done!"
 
 ## build_broker: builds the broker binary as a linux executable
@@ -76,4 +78,5 @@ start: build_front
 stop:
 	@echo "Stopping front end..."
 	@-pkill -SIGTERM -f "./${FRONT_END_BINARY}"
+	rm ../front-end/frontApp
 	@echo "Stopped front end!"
