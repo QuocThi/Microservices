@@ -14,7 +14,7 @@ import (
 const (
 	webPort  = "80"
 	rpcPort  = "5002"
-	gRPC     = "50001"
+	gRPCPort = "50001"
 	mongoURL = "mongodb://mongo:27017"
 )
 
@@ -28,9 +28,9 @@ const (
 //		FileName string `json:"file_name" mapstructure:"file_name"`
 //	}
 type Config struct {
+	log  Logs
 	db   *database.DB
 	name string
-	log  Logs
 }
 
 type Logs struct {
@@ -82,7 +82,10 @@ func main() {
 	log.PrintLogs("register RPC successed")
 
 	go app.listenRPC(rpcPort)
-	log.log.Printf("start RPC server listen on %s \n", rpcPort)
+	log.log.Printf("started RPC server listen on %s \n", rpcPort)
+
+	go app.RegisterGPRC(gRPCPort, "RandomGRPC")
+	log.PrintLogs("started GRPC server successfully")
 
 	// Listen normal requests
 	server := http.Server{

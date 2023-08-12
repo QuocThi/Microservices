@@ -15,6 +15,7 @@ import (
 
 	"broker/event"
 	"broker/logs"
+	api_proto "broker/randoms"
 )
 
 // RequestPayload describes the JSON that this service accepts as an HTTP Post request
@@ -382,4 +383,39 @@ func (app *Config) LogViaGRPC(w http.ResponseWriter, r *http.Request) {
 	payload.Message = "logged"
 
 	app.writeJSON(w, http.StatusAccepted, payload)
+}
+
+func (app *Config) CallRandomGRPC(w http.ResponseWriter, r *http.Request) {
+	var request RequestPayload
+
+	err := app.readJSON(w, r, &request)
+	if err != nil {
+		app.errorJSON(w, err)
+	}
+
+	conn, err := grpc.Dial("random-service:50001", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	if err != nil {
+		app.errorJSON(w, err)
+		return
+	}
+	defer conn.Close()
+
+	c := api_proto.NewRandomServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	res, err := c.RandomGPRC(ctx, &api_proto.RandomRequest{
+		Data: request.Random.Data,
+	})
+	if err != nil {
+		app.errorJSON(w, err)
+	}
+
+	response := jsonResponse{
+		Error:   res.Result,
+		Message: fmt.Sprintf("Called %s", res.Method),
+		Data:    res.Data,
+	}
+
+	app.writeJSON(w, http.StatusAccepted, response)
 }
