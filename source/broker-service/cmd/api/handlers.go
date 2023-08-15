@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/alts"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"broker/event"
@@ -393,7 +394,12 @@ func (app *Config) CallRandomGRPC(w http.ResponseWriter, r *http.Request) {
 		app.errorJSON(w, err)
 	}
 
-	conn, err := grpc.Dial("random-service:50001", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	expectedServerSA := "test@gmail.com"
+	clientOpts := alts.DefaultClientOptions()
+	clientOpts.TargetServiceAccounts = []string{expectedServerSA}
+	altsTC := alts.NewClientCreds(clientOpts)
+
+	conn, err := grpc.Dial("random-service:50001", grpc.WithTransportCredentials(altsTC))
 	if err != nil {
 		app.errorJSON(w, err)
 		return

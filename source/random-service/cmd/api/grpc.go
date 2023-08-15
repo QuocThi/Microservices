@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/alts"
 
 	api_proto "random-service/api-proto"
 	"random-service/cmd/database"
@@ -27,6 +28,11 @@ func NewRandomGRPCServer(DB *database.DB, name string) *RandomServer {
 }
 
 func (r *RandomServer) RandomGPRC(ctx context.Context, request *api_proto.RandomRequest) (*api_proto.RandomResponse, error) {
+	err := alts.ClientAuthorizationCheck(ctx, []string{"test@gmail.com"})
+	if err != nil {
+		return &api_proto.RandomResponse{}, fmt.Errorf("request unauthorized")
+	}
+
 	if request == nil {
 		return nil, fmt.Errorf("empty request")
 	}
@@ -35,7 +41,7 @@ func (r *RandomServer) RandomGPRC(ctx context.Context, request *api_proto.Random
 		Data: request.Data,
 	}
 
-	err := r.DB.Insert(entry)
+	err = r.DB.Insert(entry)
 	if err != nil {
 		return &api_proto.RandomResponse{Result: false}, fmt.Errorf("failed to store random data: %v", err)
 	}
@@ -55,6 +61,9 @@ func (app *Config) RegisterGPRC(port, name string) {
 	}
 	randomServer := NewRandomGRPCServer(app.db, name)
 	grpcServer := grpc.NewServer()
+	// NOTE: Only uncomment for debuging purpose to make request using grpcurl
+	// reflection.Register(grpcServer)
+
 	api_proto.RegisterRandomServiceServer(grpcServer, randomServer)
 
 	err = grpcServer.Serve(listen)

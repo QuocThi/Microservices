@@ -66,7 +66,7 @@ func main() {
 
 func connect() (*amqp.Connection, error) {
 	var counts int64
-	var backOff = 1 * time.Second
+	backOff := 1 * time.Second
 	var connection *amqp.Connection
 
 	// don't continue until rabbit is ready
