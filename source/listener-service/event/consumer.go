@@ -3,21 +3,23 @@ package event
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"log"
 	"net/http"
 
+	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Consumer struct {
-	conn *amqp.Connection
+	conn      *amqp.Connection
 	queueName string
+	log       logr.Logger
 }
 
-func NewConsumer(conn *amqp.Connection) (Consumer, error) {
+func NewConsumer(conn *amqp.Connection, name string, log logr.Logger) (Consumer, error) {
 	consumer := Consumer{
-		conn: conn,
+		conn:      conn,
+		queueName: name,
+		log:       log,
 	}
 
 	err := consumer.setup()
@@ -26,6 +28,10 @@ func NewConsumer(conn *amqp.Connection) (Consumer, error) {
 	}
 
 	return consumer, nil
+}
+
+func (consumer *Consumer) GetLog() logr.Logger {
+	return consumer.log
 }
 
 func (consumer *Consumer) setup() error {
@@ -79,23 +85,23 @@ func (consumer *Consumer) Listen(topics []string) error {
 			var payload Payload
 			_ = json.Unmarshal(d.Body, &payload)
 
-			go handlePayload(payload)
+			go handlePayload(payload, consumer.log)
 		}
 	}()
 
-	fmt.Printf("Waiting for message [Exchange, Queue] [logs_topic, %s]\n", q.Name)
+	consumer.log.Info("Waiting for message [Exchange, Queue]", "queueInfo", q)
 	<-forever
 
 	return nil
 }
 
-func handlePayload(payload Payload) {
+func handlePayload(payload Payload, l logr.Logger) {
 	switch payload.Name {
 	case "log", "event":
 		// log whatever we get
 		err := logEvent(payload)
 		if err != nil {
-			log.Println(err)
+			l.Error(err, "handle payload failed")
 		}
 
 	case "auth":
@@ -106,13 +112,16 @@ func handlePayload(payload Payload) {
 	default:
 		err := logEvent(payload)
 		if err != nil {
-			log.Println(err)
+			l.Error(err, "handle default payload failed")
 		}
 	}
 }
 
 func logEvent(entry Payload) error {
-	jsonData, _ := json.MarshalIndent(entry, "", "\t")
+	jsonData, err := json.MarshalIndent(entry, "", "\t")
+	if err != nil {
+		return err
+	}
 
 	logServiceURL := "http://logger-service/log"
 
@@ -134,6 +143,6 @@ func logEvent(entry Payload) error {
 	if response.StatusCode != http.StatusAccepted {
 		return err
 	}
-	
+
 	return nil
 }

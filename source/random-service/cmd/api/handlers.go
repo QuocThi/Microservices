@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+
 	"random-service/cmd/api/models"
 	dbmodels "random-service/cmd/database/models"
 )
@@ -10,21 +11,20 @@ func (app *Config) SaveLog(w http.ResponseWriter, r *http.Request) {
 	var request models.JSONPayload
 	err := app.readJSON(w, r, &request)
 	if err != nil {
-		app.errorJSON(w, err, http.StatusInternalServerError)
+		app.HandleError(w, "parse request failed", err)
 		return
 	}
 
 	entry := dbmodels.RandomData{
 		Data: request.Data,
 	}
-	app.log.PrintLogs("Before save DB")
 
 	err = app.db.Insert(entry)
 	if err != nil {
 		app.errorJSON(w, err, http.StatusInternalServerError)
 		return
 	}
-	app.log.PrintLogs(request)
+	app.log.Info("print request", "request", request)
 
 	resData := models.ResponseData{
 		Data: "Called protocol is: JSON",

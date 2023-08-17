@@ -4,29 +4,29 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"log-service/data"
-	"log-service/logs"
 	"net"
 
 	"google.golang.org/grpc"
-)
 
+	"log-service/data"
+	"log-service/logs"
+)
 
 type LogServer struct {
 	logs.UnimplementedLogServiceServer
-	Models data.Models
+	DB data.DB
 }
 
 func (l *LogServer) WriteLog(ctx context.Context, req *logs.LogRequest) (*logs.LogResponse, error) {
 	input := req.GetLogEntry()
 
 	// write the log
-	logEntry := data.LogEntry {
+	logEntry := data.LogEntry{
 		Name: input.Name,
 		Data: input.Data,
 	}
 
-	err := l.Models.LogEntry.Insert(logEntry)
+	err := l.DB.Insert(logEntry)
 	if err != nil {
 		res := &logs.LogResponse{Result: "failed"}
 		return res, err
@@ -45,9 +45,9 @@ func (app *Config) gRPCListen() {
 
 	s := grpc.NewServer()
 
-	logs.RegisterLogServiceServer(s, &LogServer{Models: app.Models})
+	logs.RegisterLogServiceServer(s, &LogServer{DB: app.DB})
 
-	log.Printf("gRPC Server started on port %s", gRpcPort)
+	app.Log.Info("gRPC Server", "port", gRpcPort)
 
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("Failed to listen for gRPC: %v", err)

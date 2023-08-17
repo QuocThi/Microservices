@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 )
 
@@ -15,12 +14,11 @@ func main() {
 	fmt.Println("Starting front end service on port 80")
 	err := http.ListenAndServe(":80", nil)
 	if err != nil {
-		log.Panic(err)
+		panic(err)
 	}
 }
 
 func render(w http.ResponseWriter, t string) {
-
 	partials := []string{
 		"./cmd/web/templates/base.layout.gohtml",
 		"./cmd/web/templates/header.partial.gohtml",

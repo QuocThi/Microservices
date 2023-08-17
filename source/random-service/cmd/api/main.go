@@ -1,14 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 
+	"github.com/go-logr/logr"
+
 	"random-service/cmd/database"
+	mylog "random-service/pkg/log"
 )
 
 const (
@@ -18,51 +19,28 @@ const (
 	mongoURL = "mongodb://mongo:27017"
 )
 
-// TODO: Add logger to this Config, to log at any internal server error for debuging. Ex:
-//
-//	type Log struct {
-//		// enabled/disabled
-//		Env       string `json:"env" mapstructure:"env"`
-//		Timestamp bool   `json:"timestamp" mapstructure:"timestamp"`
-//		// empty mean StdOut
-//		FileName string `json:"file_name" mapstructure:"file_name"`
-//	}
 type Config struct {
-	log  Logs
+	log  logr.Logger
 	db   *database.DB
 	name string
 }
 
-type Logs struct {
-	buf *bytes.Buffer
-	log *log.Logger
-}
-
-func NewLogs() Logs {
-	var buf bytes.Buffer
-	logger := log.New(&buf, "logger: ", log.Lshortfile)
-	return Logs{
-		log: logger,
-		buf: &buf,
-	}
-}
-
-func NewConfig(db *database.DB, name string, log Logs) Config {
+func NewConfig(db *database.DB, name string, l logr.Logger) Config {
 	return Config{
 		db:   db,
 		name: name,
-		log:  log,
+		log:  l,
 	}
 }
 
 func main() {
-	log := NewLogs()
-	log.PrintLogs("connecting to mongodb ...")
+	l := mylog.NewCustomLogger()
+	l.Info("connecting to mongodb ...")
 	db, err := database.NewDB("random", mongoURL)
 	if err != nil {
 		panic(err)
 	}
-	log.PrintLogs("connected to mongodb")
+	l.Info("connected to mongodb")
 
 	// close db connection
 	defer func() {
@@ -71,7 +49,7 @@ func main() {
 		}
 	}()
 
-	app := NewConfig(db, "random-service", log)
+	app := NewConfig(db, "random-service", l)
 
 	rpcServer := NewRPCServer("randomRPC", *app.db)
 	// register to RPC
@@ -79,13 +57,13 @@ func main() {
 	if err != nil {
 		panic("failed to register RPC for RPCServer reveiver")
 	}
-	log.PrintLogs("register RPC successed")
+	app.log.Info("register RPC successed")
 
 	go app.listenRPC(rpcPort)
-	log.log.Printf("started RPC server listen on %s \n", rpcPort)
+	app.log.Info("started RPC server", "port", rpcPort)
 
 	go app.RegisterGPRC(gRPCPort, "RandomGRPC")
-	log.PrintLogs("started GRPC server successfully")
+	app.log.Info("started GRPC server successfully")
 
 	// Listen normal requests
 	server := http.Server{
@@ -97,13 +75,14 @@ func main() {
 	if err != nil {
 		panic("failed to start random-service")
 	}
-	log.log.Printf("start http server listen on %s \n", webPort)
+	app.log.Info("start http server listen on %s \n", webPort)
 }
 
 func (app *Config) listenRPC(port string) {
 	listenURL := fmt.Sprintf("0.0.0.0:%s", rpcPort)
 	listen, err := net.Listen("tcp", listenURL)
 	if err != nil {
+		app.log.Error(err, "rpc listen failed")
 		panic("failed to listen rpc...")
 	}
 

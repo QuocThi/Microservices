@@ -2,24 +2,34 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/go-logr/logr"
+
+	mylog "mailer-service/pkg/log"
 )
 
 type Config struct {
 	Mailer Mail
+	Log    logr.Logger
+}
+
+func NewConfig(mail Mail, l logr.Logger) Config {
+	return Config{
+		Mailer: mail,
+		Log:    l,
+	}
 }
 
 const webPort = "80"
 
 func main() {
-	app := Config{
-		Mailer: createMail(),
-	}
+	l := mylog.NewCustomLogger()
+	app := NewConfig(createMail(), l)
 
-	log.Println("Starting mail service on port", webPort)
+	app.Log.Info("starting mail service... ", "port", webPort)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", webPort),
@@ -28,7 +38,8 @@ func main() {
 
 	err := srv.ListenAndServe()
 	if err != nil {
-		log.Panic(err)
+		app.Log.Error(err, "server listen failed")
+		panic(err)
 	}
 }
 

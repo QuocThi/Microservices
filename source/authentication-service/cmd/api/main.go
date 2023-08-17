@@ -1,17 +1,19 @@
 package main
 
 import (
-	"authentication/data"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/go-logr/logr"
 	_ "github.com/jackc/pgconn"
 	_ "github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
+
+	"authentication/data"
+	mylog "authentication/pkg/log"
 )
 
 const webPort = "80"
@@ -19,33 +21,35 @@ const webPort = "80"
 var counts int64
 
 type Config struct {
-	DB *sql.DB
+	DB     *sql.DB
 	Models data.Models
+	Log    logr.Logger
 }
 
 func main() {
-	log.Println("Starting authentication service")
+	logger := mylog.NewCustomLogger()
 
-	// connect to DB
-	conn := connectToDB()
+	logger.Info("Connecting to Postgres...")
+	conn := connectToDB(logger)
 	if conn == nil {
-		log.Panic("Can't connect to Postgres!")
+		panic("Can't connect to Postgres")
 	}
 
-	// set up config
 	app := Config{
-		DB: conn,
+		DB:     conn,
 		Models: data.New(conn),
+		Log:    logger,
 	}
 
 	srv := &http.Server{
-		Addr: fmt.Sprintf(":%s", webPort),
+		Addr:    fmt.Sprintf(":%s", webPort),
 		Handler: app.routes(),
 	}
 
+	logger.Info("Starting authentication service...")
 	err := srv.ListenAndServe()
 	if err != nil {
-		log.Panic(err)
+		panic(err)
 	}
 }
 
@@ -63,25 +67,25 @@ func openDB(dsn string) (*sql.DB, error) {
 	return db, nil
 }
 
-func connectToDB() *sql.DB {
+func connectToDB(logger logr.Logger) *sql.DB {
 	dsn := os.Getenv("DSN")
 
 	for {
 		connection, err := openDB(dsn)
 		if err != nil {
-			log.Println("Postgres not yet ready ...")
+			logger.Info("Postgres not yet ready ...")
 			counts++
 		} else {
-			log.Println("Connected to Postgres!")
+			logger.Info("Connected to Postgres!")
 			return connection
 		}
 
 		if counts > 10 {
-			log.Println(err)
+			logger.Error(err, "connectToDB failed!", "total retries: ", counts)
 			return nil
 		}
 
-		log.Println("Backing off for two seconds....")
+		logger.Info("Backing off for two seconds...", "Retry: ", counts)
 		time.Sleep(2 * time.Second)
 		continue
 	}

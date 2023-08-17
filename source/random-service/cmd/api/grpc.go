@@ -43,7 +43,7 @@ func (r *RandomServer) RandomGPRC(ctx context.Context, request *api_proto.Random
 	res := api_proto.RandomResponse{
 		Method: "GRPC",
 		Data:   "invoked GRPC successfully",
-		Result: true,
+		Result: false,
 	}
 	return &res, nil
 }

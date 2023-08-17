@@ -22,22 +22,21 @@ func (app *Config) SendMail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := Message {
-		From: requestPayload.From,
-		To: requestPayload.To,
+	msg := Message{
+		From:    requestPayload.From,
+		To:      requestPayload.To,
 		Subject: requestPayload.Subject,
-		Data: requestPayload.Message,
+		Data:    requestPayload.Message,
 	}
 
 	err = app.Mailer.SendSMTPMessage(msg)
 	if err != nil {
-		log.Println(err)
-		app.errorJSON(w, err)
+		app.HandleError(w, "send smtp message failed", err)
 		return
 	}
 
-	payload := jsonResponse {
-		Error: false,
+	payload := jsonResponse{
+		Error:   false,
 		Message: "sent to " + requestPayload.To,
 	}
 

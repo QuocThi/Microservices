@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
+
 	"random-service/cmd/api/models"
 )
 
@@ -68,7 +68,7 @@ func (app *Config) errorJSON(w http.ResponseWriter, err error, status ...int) er
 	return app.writeJSON(w, statusCode, payload)
 }
 
-func (l Logs) PrintLogs(data interface{}) {
-	l.log.Print(data)
-	fmt.Print(l.buf)
+func (app *Config) HandleError(w http.ResponseWriter, message string, err error) {
+	app.log.Error(err, "marshal request failed")
+	app.errorJSON(w, err)
 }

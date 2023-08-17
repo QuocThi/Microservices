@@ -16,6 +16,7 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 
 	err := app.readJSON(w, r, &requestPayload)
 	if err != nil {
+		app.Log.Error(err, "parse authenticate request failed")
 		app.errorJSON(w, err, http.StatusBadRequest)
 		return
 	}
@@ -23,26 +24,29 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 	// validate the user against the database
 	user, err := app.Models.User.GetByEmail(requestPayload.Email)
 	if err != nil {
+		app.Log.Error(err, "invalid credentials")
 		app.errorJSON(w, errors.New("invalid credentials"), http.StatusBadRequest)
 		return
 	}
 
 	valid, err := user.PasswordMatches(requestPayload.Password)
 	if err != nil || !valid {
-		app.errorJSON(w, errors.New("invalid credentials"), http.StatusBadRequest)
+		app.Log.Error(err, "wrong password")
+		app.errorJSON(w, errors.New("wrong password"), http.StatusBadRequest)
 		return
 	}
 
 	// log authentication
 	err = app.logRequest("authentication", fmt.Sprintf("%s logged in", user.Email))
 	if err != nil {
+		app.Log.Error(err, "failed to log authenticate request")
 		app.errorJSON(w, err)
 		return
 	}
 
 	payload := jsonResponse{
 		Error:   false,
-		Message: fmt.Sprintf("Logged in user %s", user.Email),
+		Message: fmt.Sprintf("logged in user %s", user.Email),
 		Data:    user,
 	}
 

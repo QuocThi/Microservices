@@ -68,7 +68,7 @@ func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
 
 	err := app.readJSON(w, r, &requestPayload)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "marshal broker request failed", err)
 		return
 	}
 
@@ -81,17 +81,17 @@ func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
 	case "mail":
 		app.sendMail(w, requestPayload.Mail)
 	case "random":
-		// app.callRandom(w, requestPayload.Random)
-		app.callRandomRPC(w, requestPayload.Random)
+		app.callRandom(w, requestPayload.Random)
+		// app.callRandomRPC(w, requestPayload.Random)
 	default:
-		app.errorJSON(w, errors.New("unknown action"))
+		app.HandleError(w, "invalid request", err)
 	}
 }
 
 func (app *Config) callRandom(w http.ResponseWriter, entry RandomPayload) {
 	jsonData, err := json.MarshalIndent(entry, "", "\t")
 	if err != nil {
-		app.errorJSON(w, err, http.StatusInternalServerError)
+		app.HandleError(w, "marshal random request failed", err)
 		return
 	}
 
@@ -99,7 +99,7 @@ func (app *Config) callRandom(w http.ResponseWriter, entry RandomPayload) {
 
 	request, err := http.NewRequest("POST", randomServiceURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		app.errorJSON(w, err, http.StatusInternalServerError)
+		app.HandleError(w, "prepare new random request failed", err)
 		return
 	}
 	request.Header.Set("Content-Type", "application/json")
@@ -107,12 +107,11 @@ func (app *Config) callRandom(w http.ResponseWriter, entry RandomPayload) {
 	client := &http.Client{}
 	response, err := client.Do(request)
 	if err != nil {
-		app.errorJSON(w, err, http.StatusInternalServerError)
+		app.HandleError(w, "make random request failed", err)
 		return
 	}
 	defer response.Body.Close()
 
-	app.log.PrintLogs(response.Body)
 	if response.StatusCode != http.StatusAccepted {
 		app.errorJSON(w, fmt.Errorf("response status not accepted"))
 		return
@@ -125,13 +124,17 @@ func (app *Config) callRandom(w http.ResponseWriter, entry RandomPayload) {
 
 // logItem logs an item by making an HTTP Post request with a JSON payload, to the logger microservice
 func (app *Config) logItem(w http.ResponseWriter, entry LogPayload) {
-	jsonData, _ := json.MarshalIndent(entry, "", "\t")
+	jsonData, err := json.MarshalIndent(entry, "", "\t")
+	if err != nil {
+		app.HandleError(w, "marshal log request failed", err)
+		return
+	}
 
 	logServiceURL := "http://logger-service/log"
 
 	request, err := http.NewRequest("POST", logServiceURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "prepare log request failed", err)
 		return
 	}
 
@@ -141,7 +144,7 @@ func (app *Config) logItem(w http.ResponseWriter, entry LogPayload) {
 
 	response, err := client.Do(request)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "make log request failed", err)
 		return
 	}
 	defer response.Body.Close()
@@ -161,19 +164,23 @@ func (app *Config) logItem(w http.ResponseWriter, entry LogPayload) {
 // authenticate calls the authentication microservice and sends back the appropriate response
 func (app *Config) authenticate(w http.ResponseWriter, a AuthPayload) {
 	// create some json we'll send to the auth microservice
-	jsonData, _ := json.MarshalIndent(a, "", "\t")
+	jsonData, err := json.MarshalIndent(a, "", "\t")
+	if err != nil {
+		app.HandleError(w, "marshal authenticate request failed", err)
+		return
+	}
 
 	// call the service
 	request, err := http.NewRequest("POST", "http://authentication-service/authenticate", bytes.NewBuffer(jsonData))
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "make authenticate request failed", err)
 		return
 	}
 
 	client := &http.Client{}
 	response, err := client.Do(request)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "make authenticate request failed", err)
 		return
 	}
 	defer response.Body.Close()
@@ -193,6 +200,8 @@ func (app *Config) authenticate(w http.ResponseWriter, a AuthPayload) {
 	// decode the json from the auth service
 	err = json.NewDecoder(response.Body).Decode(&jsonFromService)
 	if err != nil {
+		app.HandleError(w, "marshal random request failed", err)
+		app.log.Error(err, "decode failed")
 		app.errorJSON(w, err)
 		return
 	}
@@ -212,7 +221,11 @@ func (app *Config) authenticate(w http.ResponseWriter, a AuthPayload) {
 
 // sendMail sends email by calling the mail microservice
 func (app *Config) sendMail(w http.ResponseWriter, msg MailPayload) {
-	jsonData, _ := json.MarshalIndent(msg, "", "\t")
+	jsonData, err := json.MarshalIndent(msg, "", "\t")
+	if err != nil {
+		app.HandleError(w, "marshal mail request failed", err)
+		return
+	}
 
 	// call the mail service
 	mailServiceURL := "http://mailer-service/send"
@@ -220,7 +233,7 @@ func (app *Config) sendMail(w http.ResponseWriter, msg MailPayload) {
 	// post to mail service
 	request, err := http.NewRequest("POST", mailServiceURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "prepare mail request failed", err)
 		return
 	}
 
@@ -229,7 +242,7 @@ func (app *Config) sendMail(w http.ResponseWriter, msg MailPayload) {
 	client := &http.Client{}
 	response, err := client.Do(request)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "make mail request failed", err)
 		return
 	}
 	defer response.Body.Close()
@@ -252,7 +265,7 @@ func (app *Config) sendMail(w http.ResponseWriter, msg MailPayload) {
 func (app *Config) logEventViaRabbit(w http.ResponseWriter, l LogPayload) {
 	err := app.pushToQueue(l.Name, l.Data)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "push message to queue failed", err)
 		return
 	}
 
@@ -296,7 +309,7 @@ type RPCPayload struct {
 func (app *Config) logItemViaRPC(w http.ResponseWriter, l LogPayload) {
 	client, err := rpc.Dial("tcp", "logger-service:5001")
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "marshal rpc log request failed", err)
 		return
 	}
 
@@ -305,7 +318,7 @@ func (app *Config) logItemViaRPC(w http.ResponseWriter, l LogPayload) {
 	var result string
 	err = client.Call("RPCServer.LogInfo", rpcPayload, &result)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "call rpc log request failed", err)
 		return
 	}
 
@@ -330,13 +343,14 @@ type RandomRPCResponse struct {
 func (app *Config) callRandomRPC(w http.ResponseWriter, p RandomPayload) {
 	conn, err := rpc.Dial("tcp", "random-service:5002")
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "marshal random rpc request failed", err)
 		return
 	}
 	var rpcResponse RandomRPCResponse
 	err = conn.Call("RPCServer.RandomRPC", RandomRPCPayload(p), &rpcResponse)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "call random rpc request failed", err)
+		return
 	}
 	res := jsonResponse{
 		Error:   false,
@@ -352,13 +366,13 @@ func (app *Config) LogViaGRPC(w http.ResponseWriter, r *http.Request) {
 
 	err := app.readJSON(w, r, &requestPayload)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "marshal grpc log request failed", err)
 		return
 	}
 
 	conn, err := grpc.Dial("logger-service:50001", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "dial grpc log request failed", err)
 		return
 	}
 	defer conn.Close()
@@ -374,7 +388,7 @@ func (app *Config) LogViaGRPC(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "invoke WriteLog request failed", err)
 		return
 	}
 
@@ -390,11 +404,12 @@ func (app *Config) CallRandomGRPC(w http.ResponseWriter, r *http.Request) {
 
 	err := app.readJSON(w, r, &request)
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "marshal grpc random request failed", err)
 	}
 
 	conn, err := grpc.Dial("random-service:50001", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
+		app.HandleError(w, "dial grpc random request failed", err)
 		app.errorJSON(w, err)
 		return
 	}
@@ -408,7 +423,8 @@ func (app *Config) CallRandomGRPC(w http.ResponseWriter, r *http.Request) {
 		Data: request.Random.Data,
 	})
 	if err != nil {
-		app.errorJSON(w, err)
+		app.HandleError(w, "invoke grpc random request failed", err)
+		return
 	}
 
 	response := jsonResponse{

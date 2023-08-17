@@ -8,9 +8,9 @@ import (
 )
 
 type jsonResponse struct {
-	Error bool `json:"error"`
+	Error   bool   `json:"error"`
 	Message string `json:"message"`
-	Data any `json:"data,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // readJSON tries to read the body of a request and converts it into JSON
@@ -70,4 +70,9 @@ func (app *Config) errorJSON(w http.ResponseWriter, err error, status ...int) er
 	payload.Message = err.Error()
 
 	return app.writeJSON(w, statusCode, payload)
+}
+
+func (app *Config) HandleError(w http.ResponseWriter, message string, err error) {
+	app.Log.Error(err, "marshal request failed")
+	app.errorJSON(w, err)
 }

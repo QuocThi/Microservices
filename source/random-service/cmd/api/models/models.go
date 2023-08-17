@@ -5,9 +5,9 @@ type JSONPayload struct {
 }
 
 type JSONResponse struct {
-	Error   bool   `json:"error"`
-	Message string `json:"message"`
 	Data    any    `json:"data,omitempty"`
+	Message string `json:"message"`
+	Error   bool   `json:"error"`
 }
 
 type ResponseData struct {
